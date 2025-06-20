@@ -6,11 +6,20 @@ function App() {
     useEffect(() => {
         const fetchJobs = async () => {
             try {
-                const res = await fetch("http://localhost:8080/jobs");
+                const res = await fetch("/jobs");
                 const data = await res.json();
-                setJobs(data);
+                console.log("Fetched jobs:", data); // ✅ Debug output
+
+                // Defensive check
+                if (Array.isArray(data)) {
+                    setJobs(data);
+                } else {
+                    console.warn("Unexpected jobs response format:", data);
+                    setJobs([]); // fallback
+                }
             } catch (err) {
                 console.error("Failed to fetch jobs:", err);
+                setJobs([]); // fallback on error
             }
         };
 

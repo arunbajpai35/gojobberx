@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"github.com/gin-gonic/gin"
+	"github.com/google/uuid"
 	"log"
 	"net/http"
 	"time"
@@ -59,6 +60,11 @@ func ListJobs(c *gin.Context) {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "could not fetch jobs"})
 		return
 	}
+
+	if jobs == nil {
+		jobs = []*Job{} // ✅ Ensure empty array, not null
+	}
+
 	c.JSON(http.StatusOK, jobs)
 }
 
@@ -94,4 +100,18 @@ func ListDeadJobs(c *gin.Context) {
 	}
 
 	c.JSON(200, deadJobs)
+}
+
+func EnqueueJobToDB(job Job) (string, error) {
+	id := uuid.New().String()
+
+	_, err := DB.Exec(context.Background(), `
+		INSERT INTO jobs (id, payload, type, priority, duration, retries, max_retries, status, created_at)
+		VALUES ($1, $2, $3, $4, $5, 0, 3, 'queued', now())
+	`, id, job.Payload, job.Type, job.Priority, job.Duration)
+
+	if err != nil {
+		return "", err
+	}
+	return id, nil
 }

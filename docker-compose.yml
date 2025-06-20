@@ -12,6 +12,8 @@ services:
     volumes:
       - pgdata:/var/lib/postgresql/data
       - ./schema.sql:/docker-entrypoint-initdb.d/schema.sql
+    networks:
+      - default
 
   backend:
     build:
@@ -23,6 +25,8 @@ services:
       - DB_URL=postgres://postgres:password@postgres:5432/gojobberx?sslmode=disable
     ports:
       - "8080:8080"
+    networks:
+      - default
 
   frontend:
     build:
@@ -32,6 +36,12 @@ services:
       - "80:80"
     depends_on:
       - backend
+    networks:
+      - default
 
 volumes:
   pgdata:
+
+networks:
+  default:
+    name: gojobberx_net
