@@ -97,29 +97,44 @@ func executeJob(job *Job) bool {
 }
 
 func priorityDispatcher() {
+	defer close(jobQueue)
 	for {
+		var job *Job
 		select {
 		case <-shutdownCh:
-			close(jobQueue)
 			return
+		case job = <-highQueue:
 		default:
+		}
+		if job == nil {
+			select {
+			case <-shutdownCh:
+				return
+			case job = <-mediumQueue:
+			default:
+			}
+		}
+		if job == nil {
+			select {
+			case <-shutdownCh:
+				return
+			case job = <-lowQueue:
+			default:
+			}
+		}
+		if job == nil {
+			select {
+			case <-shutdownCh:
+				return
+			case <-time.After(100 * time.Millisecond):
+			}
+			continue
 		}
 
 		select {
-		case job := <-highQueue:
-			jobQueue <- job
-		default:
-			select {
-			case job := <-mediumQueue:
-				jobQueue <- job
-			default:
-				select {
-				case job := <-lowQueue:
-					jobQueue <- job
-				default:
-					time.Sleep(100 * time.Millisecond)
-				}
-			}
+		case jobQueue <- job:
+		case <-shutdownCh:
+			return
 		}
 	}
 }
