@@ -4,35 +4,38 @@ import (
 	"log"
 	"math"
 	"math/rand"
+	"sync"
 	"time"
 )
 
-// Central job queue where priority dispatcher sends jobs
 var jobQueue = make(chan *Job, 100)
 
-// Priority queues
 var (
 	highQueue   = make(chan *Job, 100)
 	mediumQueue = make(chan *Job, 100)
 	lowQueue    = make(chan *Job, 100)
 )
 
-// StartWorkerPool spins up `n` worker goroutines
+var (
+	shutdownCh = make(chan struct{})
+	workerWG   sync.WaitGroup
+)
+
 func StartWorkerPool(n int) {
 	for i := 0; i < n; i++ {
+		workerWG.Add(1)
 		go worker(i)
 	}
 	log.Printf("👷 Started %d workers\n", n)
 }
 
-// worker pulls jobs from jobQueue and processes them
 func worker(id int) {
+	defer workerWG.Done()
 	for job := range jobQueue {
 		processJob(id, job)
 	}
 }
 
-// processJob executes and retries the job
 func processJob(workerID int, job *Job) {
 	log.Printf("👷 Worker %d picked job %s [%s]", workerID, job.ID, job.Type)
 
@@ -49,7 +52,6 @@ func processJob(workerID int, job *Job) {
 		return
 	}
 
-	// Job failed
 	job.Retries++
 	if job.Retries > job.MaxRetries {
 		job.Status = StatusFailed
@@ -57,7 +59,6 @@ func processJob(workerID int, job *Job) {
 		log.Printf("❌ Job %s failed after %d retries", job.ID, job.Retries)
 		jobsTotal.WithLabelValues(string(StatusFailed)).Inc()
 
-		// Save to dead letter queue
 		err := SaveToDeadLetterQueue(job)
 		if err != nil {
 			log.Printf("⚠️ Failed to insert into dead_jobs: %v", err)
@@ -67,7 +68,6 @@ func processJob(workerID int, job *Job) {
 		return
 	}
 
-	// Retry with exponential backoff + jitter
 	backoff := exponentialBackoff(job.Retries)
 	log.Printf("🔁 Retrying job %s after %v (attempt %d)", job.ID, backoff, job.Retries)
 
@@ -76,7 +76,6 @@ func processJob(workerID int, job *Job) {
 	})
 }
 
-// executeJob simulates execution based on job type
 func executeJob(job *Job) bool {
 	switch job.Type {
 	case "send_email":
@@ -88,10 +87,8 @@ func executeJob(job *Job) bool {
 		return false
 	}
 
-	// Simulate work (e.g. API call, file generation, etc.)
 	time.Sleep(time.Duration(job.Duration) * time.Second)
 
-	// Simulate a failure 30% of the time (for retry testing)
 	if job.Retries == 0 && time.Now().UnixNano()%10 < 3 {
 		return false
 	}
@@ -99,9 +96,15 @@ func executeJob(job *Job) bool {
 	return true
 }
 
-// priorityDispatcher checks high > medium > low queues in order
 func priorityDispatcher() {
 	for {
+		select {
+		case <-shutdownCh:
+			close(jobQueue)
+			return
+		default:
+		}
+
 		select {
 		case job := <-highQueue:
 			jobQueue <- job
