@@ -16,8 +16,17 @@ func EnqueueJob(c *gin.Context) {
 		Priority string `json:"priority"`
 	}
 	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid request"})
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid request body"})
 		return
+	}
+
+	if msg := validateEnqueue(&req); msg != "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": msg})
+		return
+	}
+
+	if req.Priority == "" {
+		req.Priority = "medium"
 	}
 
 	job := &Job{
@@ -41,6 +50,34 @@ func EnqueueJob(c *gin.Context) {
 	queueByPriority(job)
 	jobsTotal.WithLabelValues(string(StatusQueued)).Inc()
 	c.JSON(http.StatusAccepted, gin.H{"job_id": job.ID})
+}
+
+var (
+	validTypes      = map[string]bool{"send_email": true, "generate_invoice": true}
+	validPriorities = map[string]bool{"": true, "high": true, "medium": true, "low": true}
+)
+
+const maxDurationSec = 600
+
+func validateEnqueue(r *struct {
+	Payload  string `json:"payload"`
+	Duration int    `json:"duration"`
+	Type     string `json:"type"`
+	Priority string `json:"priority"`
+}) string {
+	if r.Payload == "" {
+		return "payload is required"
+	}
+	if !validTypes[r.Type] {
+		return "type must be send_email or generate_invoice"
+	}
+	if r.Duration < 0 || r.Duration > maxDurationSec {
+		return "duration must be between 0 and 600 seconds"
+	}
+	if !validPriorities[r.Priority] {
+		return "priority must be high, medium, or low"
+	}
+	return ""
 }
 
 func GetJobStatus(c *gin.Context) {
