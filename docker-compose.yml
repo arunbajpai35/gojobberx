@@ -29,6 +29,7 @@ services:
       - DB_URL=postgres://postgres:password@postgres:5432/gojobberx?sslmode=disable
     ports:
       - "8080:8080"
+    stop_grace_period: 30s
     networks:
       - default
 
