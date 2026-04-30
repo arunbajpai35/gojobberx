@@ -8,13 +8,15 @@ import (
 	"time"
 )
 
+type enqueueRequest struct {
+	Payload  string `json:"payload"`
+	Duration int    `json:"duration"`
+	Type     string `json:"type"`
+	Priority string `json:"priority"`
+}
+
 func EnqueueJob(c *gin.Context) {
-	var req struct {
-		Payload  string `json:"payload"`
-		Duration int    `json:"duration"`
-		Type     string `json:"type"`
-		Priority string `json:"priority"`
-	}
+	var req enqueueRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid request body"})
 		return
@@ -59,12 +61,7 @@ var (
 
 const maxDurationSec = 600
 
-func validateEnqueue(r *struct {
-	Payload  string `json:"payload"`
-	Duration int    `json:"duration"`
-	Type     string `json:"type"`
-	Priority string `json:"priority"`
-}) string {
+func validateEnqueue(r *enqueueRequest) string {
 	if r.Payload == "" {
 		return "payload is required"
 	}
