@@ -112,12 +112,17 @@ func GetAllJobs() ([]*Job, error) {
 
 // queueByPriority puts the job in the appropriate queue
 func queueByPriority(job *Job) {
+	var ch chan *Job
 	switch job.Priority {
 	case "high":
-		highQueue <- job
+		ch = highQueue
 	case "low":
-		lowQueue <- job
+		ch = lowQueue
 	default:
-		mediumQueue <- job
+		ch = mediumQueue
+	}
+	select {
+	case ch <- job:
+	case <-shutdownCh:
 	}
 }
