@@ -22,6 +22,10 @@ func InitDB() {
 		log.Fatalf("❌ Unable to connect to database: %v", err)
 	}
 
+	if err := DB.Ping(context.Background()); err != nil {
+		log.Fatalf("❌ Database ping failed: %v", err)
+	}
+
 	log.Println("✅ Connected to PostgreSQL")
 }
 
