@@ -11,6 +11,7 @@ func main() {
 	InitDB()
 	go priorityDispatcher()
 	StartWorkerPool(3)
+	RecoverPendingJobs()
 
 	r := gin.Default()
 	r.Use(cors.Default())
