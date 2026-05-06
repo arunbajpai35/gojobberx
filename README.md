@@ -93,6 +93,8 @@ curl -X POST http://localhost:8080/job \
 | `duration` | no       | int, 0–600 (simulated work seconds)          |
 | `priority` | no       | `high` \| `medium` \| `low` (default medium) |
 
+To exercise the DLQ flow, send a payload starting with `fail` (e.g. `fail-demo`). It always fails, exhausts retries, and lands in `/dead-jobs` after ~15s.
+
 ## Design choices and trade-offs
 
 A few decisions worth calling out — these are where the project differs from a serious queue and where the interesting learning lives:
