@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from "react";
 import EnqueueForm from "./components/EnqueueForm";
 import JobsTable from "./components/JobsTable";
 import Summary from "./components/Summary";
+import { apiUrl } from "./api";
 import "./App.css";
 
 const POLL_MS = 5000;
@@ -16,8 +17,8 @@ export default function App() {
   const refetch = useCallback(async () => {
     try {
       const [jobsRes, deadRes] = await Promise.all([
-        fetch("/jobs"),
-        fetch("/dead-jobs"),
+        fetch(apiUrl("/jobs")),
+        fetch(apiUrl("/dead-jobs")),
       ]);
       const jobsData = await jobsRes.json();
       const deadData = await deadRes.json();

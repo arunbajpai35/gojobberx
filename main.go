@@ -35,7 +35,11 @@ func main() {
 	r.GET("/dead-jobs", ListDeadJobs)
 	r.GET("/metrics", gin.WrapH(prometheusHandler()))
 
-	srv := &http.Server{Addr: ":8080", Handler: r}
+	port := os.Getenv("PORT")
+	if port == "" {
+		port = "8080"
+	}
+	srv := &http.Server{Addr: ":" + port, Handler: r}
 
 	go func() {
 		if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {

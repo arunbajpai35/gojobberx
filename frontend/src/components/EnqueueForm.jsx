@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { apiUrl } from "../api";
 
 const initial = {
   payload: "",
@@ -20,7 +21,7 @@ export default function EnqueueForm({ onEnqueued, onError }) {
     e.preventDefault();
     setSubmitting(true);
     try {
-      const res = await fetch("/job", {
+      const res = await fetch(apiUrl("/job"), {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(form),
