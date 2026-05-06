@@ -4,6 +4,16 @@ A Postgres-backed job queue in Go — priority dispatch, exponential-backoff ret
 
 > Not intended for production. See [What this is NOT](#what-this-is-not).
 
+## Live demo
+
+**[gojobberx.vercel.app](https://gojobberx.vercel.app)**
+
+Stack is split across three free tiers: Vercel (frontend), Render (Go backend), Neon (Postgres).
+
+⚠️ The Render free tier sleeps after 15 minutes of inactivity. **Your first request may take 30–60 seconds while the service wakes up.** Subsequent requests are fast.
+
+To exercise the dead-letter queue from the dashboard, send a payload starting with `fail` (e.g. `fail-demo`) — it always fails, exhausts retries, and lands in the **dead jobs** tab after ~15s.
+
 ## Architecture
 
 ```
