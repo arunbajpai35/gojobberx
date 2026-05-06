@@ -19,6 +19,7 @@ func main() {
 	InitDB()
 	go priorityDispatcher()
 	StartWorkerPool(3)
+	startMetricsObserver()
 	RecoverPendingJobs()
 
 	r := gin.Default()
