@@ -2,10 +2,11 @@ package main
 
 import (
 	"context"
-	"github.com/gin-gonic/gin"
-	"log"
+	"log/slog"
 	"net/http"
 	"time"
+
+	"github.com/gin-gonic/gin"
 )
 
 type enqueueRequest struct {
@@ -44,7 +45,7 @@ func EnqueueJob(c *gin.Context) {
 	}
 
 	if err := SaveJob(job); err != nil {
-		log.Printf("❌ Failed to save job: %v", err)
+		slog.Error("save job failed", "job_id", job.ID, "error", err)
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "DB error"})
 		return
 	}
@@ -95,7 +96,7 @@ func ListJobs(c *gin.Context) {
 	}
 
 	if jobs == nil {
-		jobs = []*Job{} // ✅ Ensure empty array, not null
+		jobs = []*Job{}
 	}
 
 	c.JSON(http.StatusOK, jobs)
@@ -126,7 +127,7 @@ func ListDeadJobs(c *gin.Context) {
 			&job.FailedAt,
 		)
 		if err != nil {
-			log.Printf("Failed to scan dead job: %v", err)
+			slog.Warn("scan dead job failed", "error", err)
 			continue
 		}
 		deadJobs = append(deadJobs, job)

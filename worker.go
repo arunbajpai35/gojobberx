@@ -1,7 +1,7 @@
 package main
 
 import (
-	"log"
+	"log/slog"
 	"math"
 	"math/rand"
 	"sync"
@@ -26,7 +26,7 @@ func StartWorkerPool(n int) {
 		workerWG.Add(1)
 		go worker(i)
 	}
-	log.Printf("👷 Started %d workers\n", n)
+	slog.Info("workers started", "count", n)
 }
 
 func worker(id int) {
@@ -37,7 +37,8 @@ func worker(id int) {
 }
 
 func processJob(workerID int, job *Job) {
-	log.Printf("👷 Worker %d picked job %s [%s]", workerID, job.ID, job.Type)
+	log := slog.With("worker", workerID, "job_id", job.ID, "type", job.Type)
+	log.Info("job picked")
 
 	job.Status = StatusRunning
 	UpdateJobStatus(job)
@@ -47,7 +48,7 @@ func processJob(workerID int, job *Job) {
 	if success {
 		job.Status = StatusCompleted
 		UpdateJobStatus(job)
-		log.Printf("✅ Job %s completed", job.ID)
+		log.Info("job completed")
 		jobsTotal.WithLabelValues(string(StatusCompleted)).Inc()
 		return
 	}
@@ -56,20 +57,19 @@ func processJob(workerID int, job *Job) {
 	if job.Retries > job.MaxRetries {
 		job.Status = StatusFailed
 		UpdateJobStatus(job)
-		log.Printf("❌ Job %s failed after %d retries", job.ID, job.Retries)
+		log.Error("job failed", "retries", job.Retries)
 		jobsTotal.WithLabelValues(string(StatusFailed)).Inc()
 
-		err := SaveToDeadLetterQueue(job)
-		if err != nil {
-			log.Printf("⚠️ Failed to insert into dead_jobs: %v", err)
+		if err := SaveToDeadLetterQueue(job); err != nil {
+			log.Error("dlq insert failed", "error", err)
 		} else {
-			log.Printf("☠️ Job %s moved to DLQ", job.ID)
+			log.Warn("job moved to dlq")
 		}
 		return
 	}
 
 	backoff := exponentialBackoff(job.Retries)
-	log.Printf("🔁 Retrying job %s after %v (attempt %d)", job.ID, backoff, job.Retries)
+	log.Info("job retry scheduled", "backoff", backoff, "attempt", job.Retries)
 
 	time.AfterFunc(backoff, func() {
 		queueByPriority(job)
@@ -79,11 +79,11 @@ func processJob(workerID int, job *Job) {
 func executeJob(job *Job) bool {
 	switch job.Type {
 	case "send_email":
-		log.Printf("📧 Sending email: %s", job.Payload)
+		slog.Info("sending email", "job_id", job.ID, "payload", job.Payload)
 	case "generate_invoice":
-		log.Printf("🧾 Generating invoice: %s", job.Payload)
+		slog.Info("generating invoice", "job_id", job.ID, "payload", job.Payload)
 	default:
-		log.Printf("⚠️ Unknown job type: %s", job.Type)
+		slog.Warn("unknown job type", "job_id", job.ID, "type", job.Type)
 		return false
 	}
 

@@ -2,7 +2,7 @@ package main
 
 import (
 	"context"
-	"log"
+	"log/slog"
 	"os"
 
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -13,20 +13,23 @@ var DB *pgxpool.Pool
 func InitDB() {
 	dsn := os.Getenv("DB_URL")
 	if dsn == "" {
-		log.Fatal("❌ DB_URL not set in environment")
+		slog.Error("DB_URL not set")
+		os.Exit(1)
 	}
 
 	var err error
 	DB, err = pgxpool.New(context.Background(), dsn)
 	if err != nil {
-		log.Fatalf("❌ Unable to connect to database: %v", err)
+		slog.Error("db connect failed", "error", err)
+		os.Exit(1)
 	}
 
 	if err := DB.Ping(context.Background()); err != nil {
-		log.Fatalf("❌ Database ping failed: %v", err)
+		slog.Error("db ping failed", "error", err)
+		os.Exit(1)
 	}
 
-	log.Println("✅ Connected to PostgreSQL")
+	slog.Info("connected to postgres")
 }
 
 func SaveToDeadLetterQueue(job *Job) error {
