@@ -4,6 +4,7 @@ import (
 	"log/slog"
 	"math"
 	"math/rand"
+	"strings"
 	"sync"
 	"time"
 )
@@ -88,6 +89,11 @@ func executeJob(job *Job) bool {
 	}
 
 	time.Sleep(time.Duration(job.Duration) * time.Second)
+
+	// payloads starting with "fail" always fail — used to demo the dlq flow
+	if strings.HasPrefix(job.Payload, "fail") {
+		return false
+	}
 
 	if job.Retries == 0 && time.Now().UnixNano()%10 < 3 {
 		return false
