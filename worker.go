@@ -41,6 +41,8 @@ func processJob(workerID int, job *Job) {
 	log := slog.With("worker", workerID, "job_id", job.ID, "type", job.Type)
 	log.Info("job picked")
 
+	start := time.Now()
+
 	job.Status = StatusRunning
 	UpdateJobStatus(job)
 
@@ -51,6 +53,7 @@ func processJob(workerID int, job *Job) {
 		UpdateJobStatus(job)
 		log.Info("job completed")
 		jobsTotal.WithLabelValues(string(StatusCompleted)).Inc()
+		processingDuration.WithLabelValues("completed").Observe(time.Since(start).Seconds())
 		return
 	}
 
@@ -60,6 +63,7 @@ func processJob(workerID int, job *Job) {
 		UpdateJobStatus(job)
 		log.Error("job failed", "retries", job.Retries)
 		jobsTotal.WithLabelValues(string(StatusFailed)).Inc()
+		processingDuration.WithLabelValues("failed").Observe(time.Since(start).Seconds())
 
 		if err := SaveToDeadLetterQueue(job); err != nil {
 			log.Error("dlq insert failed", "error", err)
@@ -71,6 +75,8 @@ func processJob(workerID int, job *Job) {
 
 	backoff := exponentialBackoff(job.Retries)
 	log.Info("job retry scheduled", "backoff", backoff, "attempt", job.Retries)
+	retriesTotal.Inc()
+	processingDuration.WithLabelValues("retried").Observe(time.Since(start).Seconds())
 
 	time.AfterFunc(backoff, func() {
 		queueByPriority(job)
