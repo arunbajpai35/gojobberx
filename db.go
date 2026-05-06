@@ -2,18 +2,25 @@ package main
 
 import (
 	"context"
+	_ "embed"
 	"log/slog"
 	"os"
 
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
+//go:embed schema.sql
+var schemaSQL string
+
 var DB *pgxpool.Pool
 
 func InitDB() {
-	dsn := os.Getenv("DB_URL")
+	dsn := os.Getenv("DATABASE_URL")
 	if dsn == "" {
-		slog.Error("DB_URL not set")
+		dsn = os.Getenv("DB_URL")
+	}
+	if dsn == "" {
+		slog.Error("DATABASE_URL or DB_URL not set")
 		os.Exit(1)
 	}
 
@@ -26,6 +33,11 @@ func InitDB() {
 
 	if err := DB.Ping(context.Background()); err != nil {
 		slog.Error("db ping failed", "error", err)
+		os.Exit(1)
+	}
+
+	if _, err := DB.Exec(context.Background(), schemaSQL); err != nil {
+		slog.Error("schema apply failed", "error", err)
 		os.Exit(1)
 	}
 
