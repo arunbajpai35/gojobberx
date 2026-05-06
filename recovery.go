@@ -2,15 +2,14 @@ package main
 
 import (
 	"context"
-	"log"
+	"log/slog"
 )
 
 func RecoverPendingJobs() {
 	ctx := context.Background()
 
-	_, err := DB.Exec(ctx, `UPDATE jobs SET status='queued', updated_at=now() WHERE status='processing'`)
-	if err != nil {
-		log.Printf("⚠️ failed to reset processing jobs: %v", err)
+	if _, err := DB.Exec(ctx, `UPDATE jobs SET status='queued', updated_at=now() WHERE status='processing'`); err != nil {
+		slog.Warn("recovery: reset processing failed", "error", err)
 		return
 	}
 
@@ -19,7 +18,7 @@ func RecoverPendingJobs() {
 		FROM jobs WHERE status='queued' ORDER BY created_at ASC
 	`)
 	if err != nil {
-		log.Printf("⚠️ failed to load pending jobs: %v", err)
+		slog.Warn("recovery: load pending failed", "error", err)
 		return
 	}
 	defer rows.Close()
@@ -32,7 +31,7 @@ func RecoverPendingJobs() {
 			&job.Status, &job.Retries, &job.MaxRetries,
 			&job.Priority, &job.CreatedAt, &job.UpdatedAt,
 		); err != nil {
-			log.Printf("⚠️ failed to scan pending job: %v", err)
+			slog.Warn("recovery: scan failed", "error", err)
 			continue
 		}
 		queueByPriority(&job)
@@ -40,6 +39,6 @@ func RecoverPendingJobs() {
 	}
 
 	if count > 0 {
-		log.Printf("♻️ recovered %d pending jobs", count)
+		slog.Info("recovery complete", "count", count)
 	}
 }

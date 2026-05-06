@@ -1,139 +1,148 @@
-🧩 GoJobberX
+# GoJobberX
 
-GoJobberX is a scalable, Dockerized job queue system written in Go, featuring PostgreSQL-backed persistence, a retry mechanism with exponential backoff, dead-letter queue support, and a live React dashboard. It is designed for backend developers looking to demonstrate advanced systems skills in real-world architectures.
+A Postgres-backed job queue in Go — priority dispatch, exponential-backoff retries, dead-letter queue, crash recovery, graceful shutdown, Prometheus metrics, React dashboard. Built end-to-end as a learning project to internalize the design trade-offs that production queues like [River](https://riverqueue.com) and [Asynq](https://github.com/hibiken/asynq) make.
 
-🚀 Features
+> Not intended for production. See [What this is NOT](#what-this-is-not).
 
-✅ Priority Queues: Jobs can be enqueued with high, medium, or low priorities.
+## Architecture
 
-✅ Worker Pool: Concurrent workers process jobs efficiently.
+```
+                    ┌────────────────────────────────────────────┐
+                    │                  backend                   │
+   POST /job        │                                            │
+  ─────────────────▶│  EnqueueJob ──▶ SaveJob ──▶ queueByPriority│
+                    │                              │             │
+                    │                              ▼             │
+                    │   ┌──────────┐   ┌──────────┐  ┌─────────┐ │
+                    │   │ highQueue│   │medQueue  │  │lowQueue │ │
+                    │   └────┬─────┘   └────┬─────┘  └────┬────┘ │
+                    │        └────────────┐ │ ┌───────────┘      │
+                    │            priority │ │ │                  │
+                    │             dispatcher                     │
+                    │                  │                         │
+                    │                  ▼                         │
+                    │             jobQueue                       │
+                    │                  │                         │
+                    │      ┌───────────┼───────────┐             │
+                    │      ▼           ▼           ▼             │
+                    │   worker 0    worker 1    worker 2         │
+                    │      │           │           │             │
+                    │      └───┬───────┴───────────┘             │
+                    │          │                                 │
+                    │   success│  fail+retries<max  fail+retries=max
+                    │          ▼          │              │       │
+                    │     completed   exp backoff       DLQ      │
+                    │                                            │
+                    └────────────────────┬───────────────────────┘
+                                         ▼
+                                  PostgreSQL
+                              (jobs, dead_jobs)
+```
 
-✅ Retries: Failed jobs are retried with exponential backoff.
+## Features
 
-✅ Dead Letter Queue: Persistently failed jobs are tracked.
+- **Priority queues** — high → medium → low, drained in order each tick
+- **Worker pool** — N goroutines consume from a shared `jobQueue`
+- **Retries with exponential backoff + jitter** — `2^attempt seconds + 0–500ms`
+- **Dead-letter queue** — jobs that exceed `max_retries` move to a `dead_jobs` table
+- **Crash recovery** — on boot, `processing` rows are reset to `queued` and re-enqueued
+- **Graceful shutdown** — SIGINT/SIGTERM trigger drain; in-flight jobs finish before exit
+- **Input validation** — bad payloads rejected at the HTTP boundary
+- **Structured logging** — `slog` with per-job context (`job_id`, `worker`, `type`)
+- **Prometheus metrics** — `jobs_total{status}` exposed at `/metrics`
+- **React dashboard** — enqueue form, status counts, jobs/DLQ tabs, color-coded badges
 
-✅ RESTful API: Simple endpoints to enqueue, monitor, and manage jobs.
+## Quickstart
 
-✅ React Dashboard: Live frontend UI polls for job updates.
+```bash
+docker-compose down -v && docker-compose up -d --build
+```
 
-✅ Dockerized: All services managed via Docker Compose.
+| Service     | URL                          |
+| ----------- | ---------------------------- |
+| Dashboard   | http://localhost             |
+| API         | http://localhost:8080        |
+| Postgres    | localhost:5432 (`postgres`/`password`) |
+| Metrics     | http://localhost:8080/metrics |
 
-✅ Prometheus Metrics: Exposes a /metrics endpoint for observability.
+Stop with `docker-compose down`. Wipe state with `docker-compose down -v`.
 
-⚖️ Tech Stack
+## API
 
-Backend: Go + Gin
+| Method | Path           | Description                          |
+| ------ | -------------- | ------------------------------------ |
+| POST   | `/job`         | Enqueue a job                        |
+| GET    | `/jobs`        | List all jobs (newest first)         |
+| GET    | `/job/:id`     | Get one job by id                    |
+| GET    | `/dead-jobs`   | List dead-lettered jobs              |
+| GET    | `/metrics`     | Prometheus exposition                |
+| GET    | `/health`      | Health check                         |
 
-Database: PostgreSQL
+### Enqueue
 
-Frontend: React (Vite + TailwindCSS)
-
-DevOps: Docker, Docker Compose, Nginx
-
-Monitoring: Prometheus-ready metrics
-
-⚙️ Getting Started
-
-Clone the repository
-
-git clone https://github.com/arunbajpai35/gojobberx.git
-cd gojobberx
-
-Run the full stack
-
-docker-compose down -v
-docker-compose build --no-cache
-docker-compose up -d
-
-Access:
-
-Backend API: http://localhost:8080
-
-Frontend Dashboard: http://localhost
-
-🔧 API Endpoints
-
-Method
-
-Endpoint
-
-Description
-
-POST
-
-/job
-
-Enqueue a new job
-
-GET
-
-/jobs
-
-List all jobs
-
-GET
-
-/job/:id
-
-Get job status by ID
-
-GET
-
-/dead-jobs
-
-List dead-lettered jobs
-
-GET
-
-/metrics
-
-Prometheus metrics
-
-GET
-
-/health
-
-Health check endpoint
-
-Example
-
+```bash
 curl -X POST http://localhost:8080/job \
- -H "Content-Type: application/json" \
- -d '{"payload":"send-email","type":"email","priority":"high"}'
+  -H 'Content-Type: application/json' \
+  -d '{"payload":"hello@example.com","type":"send_email","duration":2,"priority":"high"}'
+```
 
-💡 Architecture
+| Field      | Required | Constraint                                   |
+| ---------- | -------- | -------------------------------------------- |
+| `payload`  | yes      | non-empty string                             |
+| `type`     | yes      | `send_email` \| `generate_invoice`           |
+| `duration` | no       | int, 0–600 (simulated work seconds)          |
+| `priority` | no       | `high` \| `medium` \| `low` (default medium) |
 
-Frontend (React)
-    ↓
- Nginx (Proxy)
-    ↓
-Backend (Go + Gin) → PostgreSQL
-                  → Worker Pool
-                  → Dead Letter Queue
+## Design choices and trade-offs
 
-💥 Highlights for Recruiters
+A few decisions worth calling out — these are where the project differs from a serious queue and where the interesting learning lives:
 
-Designed and built concurrent job execution system with prioritization.
+- **Postgres over Redis.** Strong durability, transactional inserts, easy to reason about. Cost: throughput is much lower than a Redis-backed queue. River makes the same call; Asynq does not.
+- **Channels for in-memory dispatch.** Simple, idiomatic Go. Cost: state is lost on crash for jobs sitting in the channel, which is why the boot-time recovery loop exists.
+- **In-memory retry timer (`time.AfterFunc`).** Easy to write. Cost: a crash between scheduling and firing loses the retry; recovery only kicks in next boot when the row is re-read. A production queue persists `next_run_at` and polls.
+- **Strict priority drain (high → medium → low).** Easy to implement and demo. Cost: sustained high-priority load starves medium/low. Real queues use weighted draining or aged-priority promotion.
+- **Single-node only.** No leader election, no distributed locking. Cost: cannot horizontally scale workers. River uses Postgres advisory locks for this; we don't.
 
-Used Go routines, channels, and database transactions for reliable job processing.
+## What this is NOT
 
-Dockerized full stack with PostgreSQL, Go backend, and React frontend.
+- Not a replacement for River, Asynq, Sidekiq, Celery, or SQS. Use those.
+- Not multi-node. The worker pool is in-process.
+- Not a scheduler. There's no `run_at` / cron / delay-by support.
+- Not authenticated. Anyone with network access to the API can enqueue.
 
-Live dashboard for operational observability.
+## Stack
 
-Integrated Prometheus metrics for monitoring system health and throughput.
+- **Backend:** Go 1.23, Gin, pgx/v5, Prometheus client, `log/slog`
+- **Frontend:** React 19, Vite 6, TailwindCSS 3
+- **Database:** PostgreSQL 14
+- **Infra:** Docker Compose, Nginx (frontend reverse proxy), multi-stage build
 
-🧳 Future Improvements
+## Local dev
 
-WebSocket live updates
+```bash
+# backend tests
+go test ./...
 
-Role-based dashboard access
+# backend only (needs postgres reachable)
+DB_URL=postgres://postgres:password@localhost:5432/gojobberx?sslmode=disable go run .
 
-Job retry scheduling via CRON
+# frontend dev server
+cd frontend && npm install && npm run dev
+```
 
-Integration with external task APIs
+## Repo layout
 
-🙋 Contact
-
-Made with ❤️ by Arun Bajpai.
-Feel free to connect or contribute!
+```
+.
+├── main.go            # http server, signal handling, shutdown sequence
+├── handlers.go        # gin handlers, request validation
+├── worker.go          # worker pool, priority dispatcher, retry loop
+├── recovery.go        # boot-time requeue of pending/processing jobs
+├── job.go             # Job/DeadJob structs, db crud, queueByPriority
+├── db.go              # pgx pool init, dlq insert
+├── metrics.go         # prometheus collectors
+├── schema.sql         # jobs + dead_jobs tables (auto-loaded by postgres)
+├── db/migrations/     # versioned migrations (not auto-applied at runtime)
+├── frontend/          # react + vite dashboard
+└── docker-compose.yml # postgres + backend + frontend
+```
